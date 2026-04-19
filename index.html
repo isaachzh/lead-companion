@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0c">
+<title>Lead CRM</title>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0a0a0c;--s1:#0f0f12;--s2:#141418;--s3:#1a1a1f;
+  --t1:#f4f4f5;--t2:#a1a1aa;--t3:#71717a;
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.12);
+  --a:#c9a96e;
+  --green:#34d399;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--purple:#a78bfa;
+  --r:12px;--r-sm:8px;--r-xs:6px;
+}
+html,body{height:100%;background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;overflow:hidden}
+
+/* ── Layout ────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+
+/* ── Header ────────────────────────────────────────────────── */
+#hdr{
+  background:var(--s1);border-bottom:1px solid var(--border);
+  padding:env(safe-area-inset-top,0) 16px 0;
+  flex-shrink:0;z-index:20;
+}
+.hdr-row{display:flex;align-items:center;justify-content:space-between;height:52px;gap:10px}
+.hdr-logo{font-size:15px;font-weight:800;color:var(--t1);letter-spacing:.5px;white-space:nowrap}
+.hdr-logo span{color:var(--a)}
+.hdr-sync{
+  display:flex;align-items:center;gap:5px;padding:5px 10px;
+  background:var(--s3);border:1px solid var(--border2);border-radius:20px;
+  font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;white-space:nowrap;
+  min-height:34px;
+}
+.hdr-sync.has-changes{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3);color:var(--amber)}
+.hdr-sync svg{flex-shrink:0}
+#searchBar{
+  display:flex;align-items:center;gap:8px;padding:0 16px 10px;
+}
+#searchInput{
+  flex:1;height:38px;background:var(--s3);border:1px solid var(--border2);
+  border-radius:var(--r-sm);color:var(--t1);font-size:13px;padding:0 12px;
+  outline:none;
+}
+#searchInput::placeholder{color:var(--t3)}
+
+/* ── Filter chips ──────────────────────────────────────────── */
+#filters{
+  display:flex;gap:6px;padding:0 16px 10px;overflow-x:auto;flex-shrink:0;
+  scrollbar-width:none;
+}
+#filters::-webkit-scrollbar{display:none}
+.fchip{
+  padding:6px 12px;background:var(--s3);border:1px solid var(--border);
+  border-radius:20px;font-size:12px;font-weight:600;color:var(--t2);
+  cursor:pointer;white-space:nowrap;min-height:32px;display:inline-flex;align-items:center;
+}
+.fchip.on{background:var(--a);border-color:var(--a);color:#1a1000}
+
+/* ── Lead list ─────────────────────────────────────────────── */
+#leadList{flex:1;overflow-y:auto;padding:0 12px 80px;scrollbar-width:thin;scrollbar-color:var(--s3) transparent}
+#leadList::-webkit-scrollbar{width:4px}
+#leadList::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+
+/* ── Lead card ─────────────────────────────────────────────── */
+.lcard{
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 14px;margin-bottom:8px;cursor:pointer;position:relative;
+  border-left:3px solid var(--border);transition:border-color .15s,background .15s;
+  -webkit-user-select:none;user-select:none;
+}
+.lcard:active{background:var(--s3)}
+.lcard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px}
+.lcard-name{font-size:14px;font-weight:700;color:var(--t1);line-height:1.3;flex:1}
+.lcard-score{
+  font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;
+  flex-shrink:0;margin-top:1px;
+}
+.score-hot{background:linear-gradient(135deg,#34d399,#059669);color:#022c1e}
+.score-warm{background:linear-gradient(135deg,#fbbf24,#d97706);color:#1a1000}
+.score-cold{background:var(--s3);color:var(--t3);border:1px solid var(--border2)}
+.lcard-meta{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.lcard-cat{font-size:11px;color:var(--t3);background:var(--s3);padding:1px 7px;border-radius:4px}
+.lcard-area{font-size:11px;color:var(--t3)}
+.lcard-bottom{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.status-pill{
+  font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
+}
+.due-tag{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600}
+.due-overdue{background:rgba(248,113,113,.15);color:var(--red)}
+.due-today{background:rgba(251,191,36,.15);color:var(--amber)}
+.due-future{background:rgba(52,211,153,.1);color:var(--green)}
+.last-wa-tag{font-size:10px;color:var(--t3);background:var(--s3);padding:1px 6px;border-radius:5px}
+
+/* ── Empty state ───────────────────────────────────────────── */
+#emptyState{
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 24px;text-align:center;gap:10px;
+}
+#emptyState.show{display:flex}
+.empty-icon{font-size:36px;margin-bottom:6px}
+.empty-title{font-size:16px;font-weight:700;color:var(--t1)}
+.empty-sub{font-size:13px;color:var(--t3);max-width:260px;line-height:1.5}
+
+/* ── Loading state ─────────────────────────────────────────── */
+#loadingState{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 24px;gap:12px;
+}
+.spinner{
+  width:28px;height:28px;border:3px solid var(--border2);
+  border-top-color:var(--a);border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--t3)}
+
+/* ── Bottom Sheet ──────────────────────────────────────────── */
+#backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;
+  opacity:0;pointer-events:none;transition:opacity .25s;
+}
+#backdrop.on{opacity:1;pointer-events:all}
+#sheet{
+  position:fixed;bottom:0;left:0;right:0;z-index:50;
+  background:var(--s1);border-radius:20px 20px 0 0;border-top:1px solid var(--border2);
+  max-height:92dvh;overflow-y:auto;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);
+  padding-bottom:env(safe-area-inset-bottom,20px);
+  scrollbar-width:thin;scrollbar-color:var(--s3) transparent;
+}
+#sheet.on{transform:translateY(0)}
+#sheet::-webkit-scrollbar{width:3px}
+#sheet::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+.drag-handle{width:36px;height:4px;background:var(--s3);border-radius:2px;margin:12px auto 4px}
+.sheet-hdr{padding:4px 16px 12px;border-bottom:1px solid var(--border)}
+.sheet-name{font-size:18px;font-weight:800;color:var(--t1);line-height:1.3;margin-bottom:4px}
+.sheet-sub{font-size:12px;color:var(--t3)}
+.sheet-body{padding:14px 16px}
+.sheet-section{margin-bottom:16px}
+.sheet-label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+
+/* ── Action buttons ────────────────────────────────────────── */
+.action-row{display:flex;gap:8px;margin-bottom:14px}
+.btn-action{
+  flex:1;height:44px;border:none;border-radius:var(--r-sm);
+  font-size:13px;font-weight:700;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+}
+.btn-call{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.btn-maps{background:rgba(96,165,250,.12);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+.btn-wa{background:rgba(37,211,102,.15);color:#25d366;border:1px solid rgba(37,211,102,.25)}
+
+/* ── Form fields ───────────────────────────────────────────── */
+.field-group{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field-label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
+.field-select,.field-date,.field-textarea{
+  width:100%;padding:10px 12px;background:var(--s3);
+  border:1px solid var(--border2);border-radius:var(--r-sm);
+  color:var(--t1);font-size:13px;font-family:inherit;outline:none;
+  -webkit-appearance:none;appearance:none;color-scheme:dark;
+}
+.field-select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;
+}
+.field-textarea{resize:vertical;min-height:70px;line-height:1.5}
+.btn-save{
+  width:100%;height:48px;background:var(--a);border:none;border-radius:var(--r-sm);
+  color:#1a1000;font-size:14px;font-weight:800;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:opacity .15s;
+}
+.btn-save:active{opacity:.8}
+.btn-save:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── WA Templates ──────────────────────────────────────────── */
+.lang-tabs{display:flex;gap:6px;margin-bottom:10px}
+.lang-tab{
+  flex:1;height:36px;background:var(--s3);border:1px solid var(--border2);
+  border-radius:var(--r-sm);font-size:12px;font-weight:700;color:var(--t2);cursor:pointer;
+}
+.lang-tab.on{background:var(--a);border-color:var(--a);color:#1a1000}
+.tpl-card{
+  background:var(--s3);border:1px solid var(--border2);border-radius:var(--r-sm);
+  padding:10px 12px;margin-bottom:8px;
+}
+.tpl-name{font-size:11px;font-weight:700;color:var(--t2);margin-bottom:5px}
+.tpl-preview{
+  font-size:11px;color:var(--t3);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  margin-bottom:8px;white-space:pre-line;
+}
+.btn-send-tpl{
+  width:100%;height:38px;background:rgba(37,211,102,.15);border:1px solid rgba(37,211,102,.25);
+  border-radius:var(--r-xs);color:#25d366;font-size:12px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+}
+
+/* ── Hours badge ───────────────────────────────────────────── */
+.hrs-open{font-size:10px;font-weight:700;color:var(--green);background:rgba(52,211,153,.1);padding:2px 8px;border-radius:5px}
+.hrs-closing{font-size:10px;font-weight:700;color:var(--amber);background:rgba(251,191,36,.1);padding:2px 8px;border-radius:5px}
+.hrs-closed{font-size:10px;font-weight:700;color:var(--red);background:rgba(248,113,113,.1);padding:2px 8px;border-radius:5px}
+.info-row{display:flex;gap:8px;font-size:12px;margin-bottom:5px;align-items:flex-start}
+.info-lbl{color:var(--t3);min-width:70px;flex-shrink:0}
+.info-val{color:var(--t2);line-height:1.4}
+
+/* ── Toast ─────────────────────────────────────────────────── */
+#toastWrap{position:fixed;top:env(safe-area-inset-top,16px);left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;align-items:center;gap:6px;width:90%}
+.toast{padding:10px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:600;backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,.4);animation:fadeIn .2s ease;pointer-events:none}
+.toast.success{background:rgba(52,211,153,.2);border:1px solid rgba(52,211,153,.3);color:var(--green)}
+.toast.error{background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.3);color:var(--red)}
+.toast.info{background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.25);color:var(--blue)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Divider ───────────────────────────────────────────────── */
+.div{height:1px;background:var(--border);margin:14px 0}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="hdr">
+    <div class="hdr-row">
+      <div class="hdr-logo">📱 <span>LEAD</span> CRM</div>
+      <div class="hdr-sync" id="syncBtn" onclick="syncNow()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span id="syncLabel">Refresh</span>
+      </div>
+    </div>
+    <div id="searchBar">
+      <input type="search" id="searchInput" placeholder="Search leads…" oninput="onSearch()" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div id="filters"></div>
+  </div>
+
+  <!-- Lead list -->
+  <div id="leadList">
+    <div id="loadingState">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading leads from cloud…</div>
+    </div>
+    <div id="emptyState">
+      <div class="empty-icon">📭</div>
+      <div class="empty-title">No leads found</div>
+      <div class="empty-sub" id="emptyMsg">Push leads from the laptop first, then refresh here.</div>
+    </div>
+    <div id="cards"></div>
+  </div>
+</div>
+
+<!-- Bottom sheet backdrop -->
+<div id="backdrop" onclick="closeSheet()"></div>
+
+<!-- Lead detail bottom sheet -->
+<div id="sheet">
+  <div class="drag-handle"></div>
+  <div class="sheet-hdr">
+    <div class="sheet-name" id="sheetName">—</div>
+    <div class="sheet-sub" id="sheetSub">—</div>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- Toast wrapper -->
+<div id="toastWrap"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  CONFIG — auto-updated by "Push All to Cloud" in laptop Settings
+// ════════════════════════════════════════════════════════════════
+const FIREBASE_DB_URL = 'https://leadbot-523cb-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+// ── Default WA templates (kept in sync with server/app.js) ──────
+const DEFAULT_MSGS = {
+  'en-intro':
+`Hi! I came across {name} on Google Maps and noticed you don't have a website yet.
+
+I help Malaysian businesses like yours build professional websites that attract customers 24/7 — even while you sleep.
+
+Our package starts from RM2,799 (one-time setup) + RM349/month. This includes hosting, mobile-friendly design, WhatsApp button, and Google-ready setup.
+
+Many of our clients see new enquiries within the first month. Would you be open to a quick 5-minute chat? 😊`,
+
+  'en-followup':
+`Hi again! Just following up on my earlier message about getting a website for {name}.
+
+I know things get busy — I just wanted to check if you had a chance to consider it.
+
+A website helps customers find you on Google before they find your competitors. Our setup is hassle-free and we handle everything for you.
+
+RM2,799 setup + RM349/month. Happy to answer any questions — no pressure at all 🙏`,
+
+  'bm-intro':
+`Hai! Saya jumpa {name} di Google Maps dan perasan perniagaan anda belum ada laman web lagi.
+
+Saya bantu perniagaan Malaysia bina laman web profesional yang tarik pelanggan 24/7 — walaupun semasa anda tidur.
+
+Pakej kami bermula dari RM2,799 (bayaran sekali) + RM349/bulan. Termasuk hosting, rekaan mesra-mobil, butang WhatsApp, dan persediaan Google.
+
+Ramai pelanggan kami dapat pertanyaan baharu dalam bulan pertama. Boleh kita bersembang sekejap 5 minit? 😊`,
+
+  'bm-followup':
+`Hai semula! Sekadar ingin follow up mesej saya sebelum ini berkenaan laman web untuk {name}.
+
+Saya faham kesibukan harian — cuma ingin tanya sama ada anda sempat pertimbangkannya.
+
+Laman web membantu pelanggan jumpa anda di Google sebelum mereka pergi ke tempat lain. Kami uruskan semua — anda tak perlu buat apa-apa.
+
+RM2,799 persediaan + RM349/bulan. Saya sedia jawab sebarang soalan — tiada tekanan 🙏`
+};
+
+// ── Status config ────────────────────────────────────────────────
+const STATUSES = [
+  { v:'new',          label:'New',          color:'#71717a',               bg:'rgba(113,113,122,.15)' },
+  { v:'messaged',     label:'Messaged',     color:'#60a5fa',               bg:'rgba(96,165,250,.15)' },
+  { v:'called',       label:'Called',       color:'#a78bfa',               bg:'rgba(167,139,250,.15)' },
+  { v:'replied',      label:'Replied',      color:'#34d399',               bg:'rgba(52,211,153,.15)' },
+  { v:'proposal',     label:'Proposal',     color:'#fbbf24',               bg:'rgba(251,191,36,.15)' },
+  { v:'closed',       label:'Closed',       color:'#6b7280',               bg:'rgba(107,114,128,.15)' },
+  { v:'not_interested',label:'Not Int.',    color:'#f87171',               bg:'rgba(248,113,113,.15)' },
+];
+const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.v, s]));
+
+// ── State ────────────────────────────────────────────────────────
+let allLeads    = [];   // array, sorted by date_added desc
+let fbTemplates = {};   // from Firebase /templates
+let pendingChanges = 0;
+let currentFilter  = 'all';
+let searchQuery    = '';
+let currentLead    = null;
+let detailLang     = 'en';
+let isLoading      = true;
+
+// ── Firebase REST helpers ────────────────────────────────────────
+function fbConfigured() {
+  return FIREBASE_DB_URL && FIREBASE_DB_URL !== 'YOUR_DATABASE_URL_HERE';
+}
+
+async function fbGet(subpath) {
+  const r = await fetch(`${FIREBASE_DB_URL}/${subpath}.json`);
+  const txt = await r.text();
+  if (!txt || txt === 'null') return null;
+  return JSON.parse(txt);
+}
+
+async function fbPut(subpath, data) {
+  await fetch(`${FIREBASE_DB_URL}/${subpath}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+// ── Template helpers ─────────────────────────────────────────────
+function getTpl(key) {
+  return (fbTemplates && fbTemplates[key]) ? fbTemplates[key] : DEFAULT_MSGS[key];
+}
+function fillTpl(key, name) {
+  return getTpl(key).replace(/\{name\}/g, name);
+}
+
+// ── Score computation ────────────────────────────────────────────
+function computeScore(lead) {
+  const ratingNorm = Math.max(0, Math.min(1, (lead.rating - 3.5) / 1.5));
+  const reviewNorm = Math.min(1, (lead.review_count || 0) / 200);
+  const noWebBonus = lead.has_website ? 0.8 : 1.0;
+  return Math.min(Math.round((ratingNorm * 60 + reviewNorm * 40) * noWebBonus), 100);
+}
+function scoreTier(s) { return s >= 70 ? 'hot' : s >= 45 ? 'warm' : 'cold'; }
+
+// ── Date helpers ─────────────────────────────────────────────────
+function relTime(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 2)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7)  return `${d}d ago`;
+  return `${Math.floor(d / 7)}wk ago`;
+}
+function dueBadge(dateStr) {
+  if (!dateStr) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  if (dateStr < today) return `<span class="due-tag due-overdue">⚠️ Overdue</span>`;
+  if (dateStr === today) return `<span class="due-tag due-today">📅 Today</span>`;
+  return `<span class="due-tag due-future">📅 ${dateStr}</span>`;
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function encPhone(p) {
+  let n = String(p||'').replace(/\D/g,'');
+  if (n.startsWith('0')) n = '60' + n.slice(1);
+  return n;
+}
+
+// ── Hours status ─────────────────────────────────────────────────
+function parseTime(str) {
+  const m = str.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return null;
+  let h = parseInt(m[1]), mn = parseInt(m[2]);
+  const p = m[3].toUpperCase();
+  if (p === 'AM') { if (h === 12) h = 0; }
+  else { if (h !== 12) h += 12; }
+  return h * 60 + mn;
+}
+function parseHoursStatus(wh, now = new Date()) {
+  if (!wh) return { status: 'unknown', label: '' };
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dayAbbr = days[now.getDay()];
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const seg = wh.split('|').map(s=>s.trim()).find(s=>s.toLowerCase().startsWith(dayAbbr.toLowerCase()));
+  if (!seg) return { status: 'unknown', label: '' };
+  if (/closed/i.test(seg)) return { status: 'closed', label: 'Closed Today' };
+  const m = seg.match(/:\s*(.+?)\s*-\s*(.+)$/);
+  if (!m) return { status: 'unknown', label: '' };
+  const o = parseTime(m[1].trim()), c = parseTime(m[2].trim());
+  if (o == null || c == null) return { status: 'unknown', label: '' };
+  const closeStr = m[2].trim();
+  if (nowMins < o || nowMins >= c) return { status: 'closed', label: 'Closed' };
+  if (c - nowMins <= 45) return { status: 'closing_soon', label: `Closing Soon · ${closeStr}` };
+  return { status: 'open', label: `Open · Closes ${closeStr}` };
+}
+function hrsBadgeHtml(wh) {
+  const h = parseHoursStatus(wh);
+  if (h.status === 'open')         return `<span class="hrs-open">● ${esc(h.label)}</span>`;
+  if (h.status === 'closing_soon') return `<span class="hrs-closing">● ${esc(h.label)}</span>`;
+  if (h.status === 'closed')       return `<span class="hrs-closed">● ${esc(h.label)}</span>`;
+  return '';
+}
+
+// ── Data loading ─────────────────────────────────────────────────
+async function loadData() {
+  if (!fbConfigured()) {
+    document.getElementById('loadingState').style.display = 'none';
+    showEmpty('Firebase not configured yet. Fill in FIREBASE_DB_URL in companion.html.');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const [leadsObj, tpls] = await Promise.all([
+      fbGet('leads'),
+      fbGet('templates')
+    ]);
+
+    fbTemplates = tpls || {};
+
+    if (!leadsObj) {
+      allLeads = [];
+    } else {
+      allLeads = Object.values(leadsObj)
+        .filter(l => l && l.id)
+        .sort((a, b) => (b.date_added || '').localeCompare(a.date_added || ''));
+    }
+
+    buildFilters();
+    renderLeads();
+    updateSyncBadge();
+  } catch (e) {
+    showEmpty('Failed to load: ' + e.message);
+  }
+  setLoading(false);
+}
+
+// ── Refresh ──────────────────────────────────────────────────────
+async function syncNow() {
+  const btn = document.getElementById('syncBtn');
+  btn.style.opacity = '.5';
+  btn.style.pointerEvents = 'none';
+  await loadData();
+  btn.style.opacity = '';
+  btn.style.pointerEvents = '';
+  toast('Refreshed', 'info');
+}
+
+// ── Filters ──────────────────────────────────────────────────────
+function buildFilters() {
+  const counts = {};
+  allLeads.forEach(l => { counts[l.status] = (counts[l.status]||0) + 1; });
+  const used = STATUSES.filter(s => counts[s.v]);
+  const total = allLeads.length;
+  const el = document.getElementById('filters');
+  el.innerHTML = `<span class="fchip ${currentFilter==='all'?'on':''}" onclick="setFilter('all')">All (${total})</span>` +
+    used.map(s => `<span class="fchip ${currentFilter===s.v?'on':''}" onclick="setFilter('${s.v}')">${esc(s.label)} (${counts[s.v]||0})</span>`).join('');
+}
+
+function setFilter(val) {
+  currentFilter = val;
+  buildFilters();
+  renderLeads();
+}
+
+function onSearch() {
+  searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+  renderLeads();
+}
+
+// ── Render cards ─────────────────────────────────────────────────
+function renderLeads() {
+  const today = new Date().toISOString().slice(0, 10);
+  let list = allLeads;
+
+  if (currentFilter !== 'all') list = list.filter(l => l.status === currentFilter);
+  if (searchQuery) list = list.filter(l =>
+    (l.name||'').toLowerCase().includes(searchQuery) ||
+    (l.phone||'').includes(searchQuery) ||
+    (l.area||'').toLowerCase().includes(searchQuery) ||
+    (l.category||'').toLowerCase().includes(searchQuery)
+  );
+
+  const cards = document.getElementById('cards');
+  const empty = document.getElementById('emptyState');
+
+  if (!list.length) {
+    cards.innerHTML = '';
+    empty.classList.add('show');
+    document.getElementById('emptyMsg').textContent =
+      searchQuery ? `No leads matching "${searchQuery}"` :
+      currentFilter !== 'all' ? `No leads with status "${currentFilter}"` :
+      'Push leads from the laptop first, then tap Refresh.';
+    return;
+  }
+  empty.classList.remove('show');
+
+  const score = l => computeScore(l);
+  cards.innerHTML = list.map(l => {
+    const sc   = score(l);
+    const tier = scoreTier(sc);
+    const st   = STATUS_MAP[l.status] || { label: l.status, color: '#71717a', bg:'rgba(113,113,122,.15)' };
+    const borderColor = st.color;
+    const hrs  = hrsBadgeHtml(l.working_hours);
+    const wa   = l.last_wa ? `<span class="last-wa-tag">📱 ${relTime(l.last_wa)}</span>` : '';
+    const due  = (l.follow_up_date && l.status !== 'closed') ? dueBadge(l.follow_up_date) : '';
+    return `<div class="lcard" onclick="openDetail(${l.id})" style="border-left-color:${borderColor}">
+      <div class="lcard-top">
+        <div class="lcard-name">${esc(l.name)}</div>
+        <div class="lcard-score score-${tier}">${sc}</div>
+      </div>
+      <div class="lcard-meta">
+        ${l.category ? `<span class="lcard-cat">${esc(l.category)}</span>` : ''}
+        ${l.area     ? `<span class="lcard-area">${esc(l.area)}</span>` : ''}
+        ${hrs}
+      </div>
+      <div class="lcard-bottom">
+        <span class="status-pill" style="background:${st.bg};color:${st.color}">${esc(st.label)}</span>
+        ${due}${wa}
+        ${l.rating ? `<span style="font-size:10px;color:var(--t3)">⭐ ${l.rating} (${l.review_count||0})</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Detail sheet ─────────────────────────────────────────────────
+function openDetail(id) {
+  currentLead = allLeads.find(l => l.id === id || l.id === String(id));
+  if (!currentLead) return;
+  detailLang = 'en';
+
+  const l    = currentLead;
+  const st   = STATUS_MAP[l.status] || { label: l.status, color:'#71717a' };
+  const hrs  = hrsBadgeHtml(l.working_hours);
+  const phone= encPhone(l.phone);
+
+  document.getElementById('sheetName').textContent = l.name || '—';
+  document.getElementById('sheetSub').textContent  = [l.category, l.area].filter(Boolean).join(' · ');
+
+  document.getElementById('sheetBody').innerHTML = `
+    <!-- Quick actions -->
+    <div class="action-row">
+      ${phone ? `<button class="btn-action btn-call" onclick="callLead()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 10.14 19.79 19.79 0 0 1 1.61 1.55 2 2 0 0 1 3.6 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.07 6.07l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Call
+      </button>` : ''}
+      ${l.maps_url ? `<button class="btn-action btn-maps" onclick="openMaps()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Maps
+      </button>` : ''}
+    </div>
+
+    <!-- Info rows -->
+    <div class="sheet-section">
+      ${l.rating    ? `<div class="info-row"><span class="info-lbl">Rating</span><span class="info-val">⭐ ${l.rating} · ${l.review_count||0} reviews</span></div>` : ''}
+      ${l.phone     ? `<div class="info-row"><span class="info-lbl">Phone</span><span class="info-val" style="color:var(--green)">${esc(l.phone)}</span></div>` : ''}
+      ${l.address   ? `<div class="info-row"><span class="info-lbl">Address</span><span class="info-val">${esc(l.address)}</span></div>` : ''}
+      ${l.working_hours ? `<div class="info-row"><span class="info-lbl">Hours</span><span class="info-val">${hrs || ''}</span></div>` : ''}
+      ${l.last_wa   ? `<div class="info-row"><span class="info-lbl">Last WA</span><span class="info-val">📱 ${relTime(l.last_wa)}</span></div>` : ''}
+    </div>
+
+    <div class="div"></div>
+
+    <!-- Edit fields -->
+    <div class="field-group">
+      <div class="field-label">Status</div>
+      <select id="f_status" class="field-select">
+        ${STATUSES.map(s=>`<option value="${s.v}" ${l.status===s.v?'selected':''}>${s.label}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">Follow-up Date</div>
+      <input type="date" id="f_date" class="field-date" value="${esc(l.follow_up_date||'')}">
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">Note</div>
+      <textarea id="f_note" class="field-textarea" placeholder="Add a note…">${esc(l.outreach_note||'')}</textarea>
+    </div>
+
+    <button class="btn-save" id="saveBtn" onclick="saveChanges()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Save Changes
+    </button>
+
+    <div class="div"></div>
+
+    <!-- WA Templates -->
+    <div class="sheet-section">
+      <div class="sheet-label">WhatsApp Templates</div>
+      <div class="lang-tabs">
+        <button class="lang-tab on" id="tabEN" onclick="setLang('en')">🇬🇧 English</button>
+        <button class="lang-tab"   id="tabBM" onclick="setLang('bm')">🇲🇾 Bahasa</button>
+      </div>
+      <div id="tplCards"></div>
+    </div>
+  `;
+
+  renderTplCards(l);
+  document.getElementById('backdrop').classList.add('on');
+  document.getElementById('sheet').classList.add('on');
+}
+
+function closeSheet() {
+  document.getElementById('backdrop').classList.remove('on');
+  document.getElementById('sheet').classList.remove('on');
+  currentLead = null;
+}
+
+function callLead() {
+  if (!currentLead || !currentLead.phone) return;
+  window.location.href = 'tel:+' + encPhone(currentLead.phone);
+}
+
+function openMaps() {
+  if (!currentLead || !currentLead.maps_url) return;
+  window.open(currentLead.maps_url, '_blank');
+}
+
+function setLang(lang) {
+  detailLang = lang;
+  document.getElementById('tabEN').classList.toggle('on', lang === 'en');
+  document.getElementById('tabBM').classList.toggle('on', lang === 'bm');
+  renderTplCards(currentLead);
+}
+
+function renderTplCards(l) {
+  const el = document.getElementById('tplCards');
+  if (!el || !l) return;
+  const keys = detailLang === 'en' ? ['en-intro','en-followup'] : ['bm-intro','bm-followup'];
+  const names = { 'en-intro':'EN · Intro', 'en-followup':'EN · Follow-up', 'bm-intro':'BM · Intro', 'bm-followup':'BM · Follow-up' };
+  el.innerHTML = keys.map(k => {
+    const text = fillTpl(k, l.name || '{name}');
+    const preview = text.slice(0, 120) + (text.length > 120 ? '…' : '');
+    return `<div class="tpl-card">
+      <div class="tpl-name">${names[k]}</div>
+      <div class="tpl-preview">${esc(preview)}</div>
+      <button class="btn-send-tpl" onclick="sendTpl('${k}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+        Send via WhatsApp
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function sendTpl(key) {
+  if (!currentLead) return;
+  const phone = encPhone(currentLead.phone);
+  if (!phone) { toast('No phone number', 'error'); return; }
+  const msg = fillTpl(key, currentLead.name || '');
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  // Log as a phone change so activity shows up on laptop after sync
+  queueChange(currentLead.id, { _wa_sent: key, _wa_time: new Date().toISOString() }, /*silent*/true);
+}
+
+// ── Save changes ─────────────────────────────────────────────────
+async function saveChanges() {
+  if (!currentLead) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const fields = {
+    status:        document.getElementById('f_status')?.value || currentLead.status,
+    follow_up_date: document.getElementById('f_date')?.value  || '',
+    outreach_note: document.getElementById('f_note')?.value   || ''
+  };
+
+  // Remove unchanged fields to reduce noise in phone_changes
+  const changed = {};
+  if (fields.status        !== currentLead.status)        changed.status        = fields.status;
+  if (fields.follow_up_date !== (currentLead.follow_up_date||'')) changed.follow_up_date = fields.follow_up_date;
+  if (fields.outreach_note  !== (currentLead.outreach_note||''))  changed.outreach_note  = fields.outreach_note;
+
+  if (!Object.keys(changed).length) {
+    toast('No changes to save', 'info');
+    btn.disabled = false; btn.textContent = 'Save Changes';
+    return;
+  }
+
+  try {
+    await queueChange(currentLead.id, changed);
+    toast('Saved & queued for sync ✓', 'success');
+    closeSheet();
+    // Update local state immediately for a snappy UI
+    const idx = allLeads.findIndex(l => l.id === currentLead.id || l.id === String(currentLead.id));
+    if (idx >= 0) { allLeads[idx] = { ...allLeads[idx], ...changed }; }
+    buildFilters();
+    renderLeads();
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+
+  btn.disabled = false; btn.textContent = 'Save Changes';
+}
+
+// ── Phone change queue ───────────────────────────────────────────
+async function queueChange(id, fields, silent = false) {
+  const ts = Date.now();
+  // Update the lead node directly
+  const updatedLead = { ...(allLeads.find(l=>l.id===id||l.id===String(id))||{}), ...fields };
+  await fbPut(`leads/${id}`, updatedLead);
+  // Write to phone_changes for laptop sync
+  await fbPut(`phone_changes/${ts}`, { id, fields });
+  pendingChanges++;
+  if (!silent) updateSyncBadge();
+}
+
+function updateSyncBadge() {
+  const btn = document.getElementById('syncBtn');
+  const lbl = document.getElementById('syncLabel');
+  if (!btn || !lbl) return;
+  if (pendingChanges > 0) {
+    btn.classList.add('has-changes');
+    lbl.textContent = `${pendingChanges} pending`;
+  } else {
+    btn.classList.remove('has-changes');
+    lbl.textContent = 'Refresh';
+  }
+}
+
+// ── UI helpers ───────────────────────────────────────────────────
+function setLoading(on) {
+  isLoading = on;
+  document.getElementById('loadingState').style.display = on ? 'flex' : 'none';
+}
+
+function showEmpty(msg) {
+  document.getElementById('cards').innerHTML = '';
+  const el = document.getElementById('emptyState');
+  el.classList.add('show');
+  document.getElementById('emptyMsg').textContent = msg;
+}
+
+function toast(msg, type = 'info') {
+  const w = document.getElementById('toastWrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  w.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadData();
+
+  // Allow swiping down on sheet to close
+  let startY = 0;
+  document.getElementById('sheet').addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+  document.getElementById('sheet').addEventListener('touchend', e => {
+    if (e.changedTouches[0].clientY - startY > 80) closeSheet();
+  }, { passive: true });
+});
+</script>
+</body>
+</html>
