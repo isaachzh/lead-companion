@@ -91,13 +91,13 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:-apple-sy
 .lcard-bottom{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
 .lcard-quick{position:absolute;top:10px;right:10px;display:flex;gap:6px}
 .lcard-quick button{
-  width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-size:15px;
+  width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:17px;
   -webkit-tap-highlight-color:transparent;
 }
 .lcard-quick .qb-wa{background:rgba(37,211,102,.18);color:#25d366;border:1px solid rgba(37,211,102,.3)}
 .lcard-quick .qb-call{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.25)}
-.lcard{padding-right:88px}
+.lcard{padding-right:104px}
 /* Live status bar — always visible, surfaces sync state honestly */
 #diagBar{
   font-size:10px;line-height:1.4;color:var(--t3);background:var(--s2);
@@ -394,8 +394,15 @@ async function fbPut(subpath, data) {
 function getTpl(key) {
   return (fbTemplates && fbTemplates[key]) ? fbTemplates[key] : DEFAULT_MSGS[key];
 }
-function fillTpl(key, name) {
-  return getTpl(key).replace(/\{name\}/g, name);
+function formatBizType(category) {
+  if (!category) return 'business';
+  return String(category).toLowerCase().trim() || 'business';
+}
+function fillTpl(key, name, type) {
+  const t = type != null ? type : 'business';
+  return getTpl(key)
+    .replace(/\{name\}/g, name || '')
+    .replace(/\{type\}/g, t);
 }
 
 // ── Score computation ────────────────────────────────────────────
@@ -570,7 +577,7 @@ function quickWa(id, ev) {
   if (!phone) { toast('No phone number', 'error'); return; }
   const lang = detectLang(l.name);
   const key  = lang + '-intro';
-  const msg  = fillTpl(key, l.name || '');
+  const msg  = fillTpl(key, l.name || '', formatBizType(l.category));
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   // Log activity to phone_changes so laptop's analytics + last_wa stay in sync
   queueActivity(id, 'whatsapp', `Sent ${key} from phone`);
@@ -798,7 +805,7 @@ function renderTplCards(l) {
   const keys = detailLang === 'en' ? ['en-intro','en-followup'] : ['bm-intro','bm-followup'];
   const names = { 'en-intro':'EN · Intro', 'en-followup':'EN · Follow-up', 'bm-intro':'BM · Intro', 'bm-followup':'BM · Follow-up' };
   el.innerHTML = keys.map(k => {
-    const text = fillTpl(k, l.name || '{name}');
+    const text = fillTpl(k, l.name || '{name}', formatBizType(l.category));
     const preview = text.slice(0, 120) + (text.length > 120 ? '…' : '');
     return `<div class="tpl-card">
       <div class="tpl-name">${names[k]}</div>
@@ -815,10 +822,10 @@ function sendTpl(key) {
   if (!currentLead) return;
   const phone = encPhone(currentLead.phone);
   if (!phone) { toast('No phone number', 'error'); return; }
-  const msg = fillTpl(key, currentLead.name || '');
+  const msg = fillTpl(key, currentLead.name || '', formatBizType(currentLead.category));
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
-  // Log as a phone change so activity shows up on laptop after sync
-  queueChange(currentLead.id, { _wa_sent: key, _wa_time: new Date().toISOString() }, /*silent*/true);
+  // Log activity via queueActivity so it reaches /phone_changes properly and gets committed by the auto-pull
+  queueActivity(currentLead.id, 'whatsapp', 'Sent ' + key + ' from detail sheet');
 }
 
 // ── Save changes ─────────────────────────────────────────────────
