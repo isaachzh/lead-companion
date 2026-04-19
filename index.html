@@ -89,6 +89,33 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:-apple-sy
 .lcard-cat{font-size:11px;color:var(--t3);background:var(--s3);padding:1px 7px;border-radius:4px}
 .lcard-area{font-size:11px;color:var(--t3)}
 .lcard-bottom{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.lcard-quick{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+.lcard-quick button{
+  width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  -webkit-tap-highlight-color:transparent;
+}
+.lcard-quick .qb-wa{background:rgba(37,211,102,.18);color:#25d366;border:1px solid rgba(37,211,102,.3)}
+.lcard-quick .qb-call{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.lcard{padding-right:88px}
+/* Live status bar — always visible, surfaces sync state honestly */
+#diagBar{
+  font-size:10px;line-height:1.4;color:var(--t3);background:var(--s2);
+  padding:5px 16px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  flex-shrink:0;
+}
+#diagBar.err{background:rgba(248,113,113,.12);color:var(--red)}
+#diagBar.ok{color:var(--t3)}
+/* Smart-router banner — green pill when PC is online */
+#liveBanner{display:none;padding:0 12px 8px;flex-shrink:0}
+.live-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  height:56px;background:linear-gradient(135deg,#34d399,#059669);
+  color:#022c1e;border-radius:var(--r);font-weight:800;font-size:15px;
+  text-decoration:none;box-shadow:0 4px 14px rgba(52,211,153,.25);
+}
+.live-sub{font-size:10px;color:var(--t3);text-align:center;margin-top:4px}
 .status-pill{
   font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
 }
@@ -238,6 +265,12 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:-apple-sy
     </div>
     <div id="filters"></div>
   </div>
+
+  <!-- Live diagnostics bar (always visible — tells you exactly what's happening) -->
+  <div id="diagBar"><span id="diagText">Connecting…</span><span id="diagTime"></span></div>
+
+  <!-- Smart-router banner: shown when PC is online (heartbeat <2 min) -->
+  <div id="liveBanner"></div>
 
   <!-- Lead list -->
   <div id="leadList">
@@ -436,15 +469,55 @@ function hrsBadgeHtml(wh) {
   return '';
 }
 
+// ── Diagnostics (always-visible status bar) ──────────────────────
+let lastSyncAt = null;
+function setDiag(text, kind = 'ok') {
+  const bar = document.getElementById('diagBar');
+  const t   = document.getElementById('diagText');
+  if (!bar || !t) return;
+  bar.classList.remove('err', 'ok');
+  bar.classList.add(kind);
+  t.textContent = text;
+  refreshDiagTime();
+}
+function refreshDiagTime() {
+  const el = document.getElementById('diagTime');
+  if (!el) return;
+  if (!lastSyncAt) { el.textContent = ''; return; }
+  const s = Math.floor((Date.now() - lastSyncAt) / 1000);
+  el.textContent = s < 60 ? `synced ${s}s ago` : `synced ${Math.floor(s/60)}m ago`;
+}
+setInterval(refreshDiagTime, 5000);
+
+// ── Smart router: detect if laptop is online via /tunnel heartbeat ──
+async function checkLaptopOnline() {
+  if (!fbConfigured()) return;
+  try {
+    const tun = await fbGet('tunnel');
+    const fresh = tun && tun.heartbeat && (Date.now() - tun.heartbeat < 2 * 60 * 1000) && tun.url;
+    const banner = document.getElementById('liveBanner');
+    if (fresh) {
+      banner.innerHTML =
+        `<a href="${tun.url}" class="live-btn">🟢 Open Full App (PC is online)</a>
+         <div class="live-sub">Real-time · scrape · bulk WA · all features</div>`;
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  } catch { /* swallow — banner just stays hidden */ }
+}
+
 // ── Data loading ─────────────────────────────────────────────────
 async function loadData() {
   if (!fbConfigured()) {
     document.getElementById('loadingState').style.display = 'none';
-    showEmpty('Firebase not configured yet. Fill in FIREBASE_DB_URL in companion.html.');
+    setDiag('⚠ Companion not patched — open laptop Settings and tap "Push All to Cloud"', 'err');
+    showEmpty('Companion HTML still has placeholder URL. Run "Push All to Cloud" from the laptop to redeploy with the real Firebase URL.');
     return;
   }
 
   setLoading(true);
+  setDiag('Loading from cloud…');
   try {
     const [leadsObj, tpls] = await Promise.all([
       fbGet('leads'),
@@ -464,10 +537,64 @@ async function loadData() {
     buildFilters();
     renderLeads();
     updateSyncBadge();
+    lastSyncAt = Date.now();
+    const dbHost = (FIREBASE_DB_URL.match(/\/\/([^.]+)/) || [, '?'])[1];
+    setDiag(`DB: ${dbHost} · ${allLeads.length} leads`, 'ok');
+    if (allLeads.length === 0) {
+      showEmpty('Firebase /leads is empty. From the laptop, click Settings → "Push All to Cloud" to seed it.');
+    }
   } catch (e) {
+    setDiag('❌ ' + e.message, 'err');
     showEmpty('Failed to load: ' + e.message);
   }
   setLoading(false);
+  checkLaptopOnline(); // refresh banner alongside data load
+}
+
+// ── Language detection (mirrors laptop app) ──────────────────────
+function detectLang(name) {
+  if (!name) return 'en';
+  if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(name)) return 'en';
+  if (/[\u0B80-\u0BFF]/.test(name)) return 'en';
+  if (/\b(raj|kumar|murugan|ganesh|nair|pillai|krishna|suresh|ramesh|venkat|naidu|iyer|sharma|singh|kaur|chandra|balaji|anand|rajan|selvam|tamil)\b/i.test(name)) return 'en';
+  if (/\b(kedai|warung|bengkel|perniagaan|sdn|bhd|ahmad|ali|ismail|hassan|hussin|aziz|rahman|harun|yusof|zainal|mohd|muhammad|abu)\b/i.test(name)) return 'bm';
+  return 'en';
+}
+
+// ── Quick WA from a card (1 tap, no detail sheet needed) ─────────
+function quickWa(id, ev) {
+  if (ev) ev.stopPropagation();
+  const l = allLeads.find(x => x.id === id || x.id === String(id));
+  if (!l) return;
+  const phone = encPhone(l.phone);
+  if (!phone) { toast('No phone number', 'error'); return; }
+  const lang = detectLang(l.name);
+  const key  = lang + '-intro';
+  const msg  = fillTpl(key, l.name || '');
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  // Log activity to phone_changes so laptop's analytics + last_wa stay in sync
+  queueActivity(id, 'whatsapp', `Sent ${key} from phone`);
+  toast('WhatsApp opened · activity queued', 'success');
+}
+
+function quickCall(id, ev) {
+  if (ev) ev.stopPropagation();
+  const l = allLeads.find(x => x.id === id || x.id === String(id));
+  if (!l || !l.phone) { toast('No phone number', 'error'); return; }
+  queueActivity(id, 'call', 'Called from phone');
+  window.location.href = 'tel:+' + encPhone(l.phone);
+}
+
+// ── Activity queue (writes to /phone_changes/{ts}) ───────────────
+async function queueActivity(id, type, note) {
+  try {
+    const ts = Date.now();
+    await fbPut(`phone_changes/${ts}`, { id, activity: { type, note } });
+    pendingChanges++;
+    updateSyncBadge();
+  } catch (e) {
+    toast('Activity log failed: ' + e.message, 'error');
+  }
 }
 
 // ── Refresh ──────────────────────────────────────────────────────
@@ -539,7 +666,12 @@ function renderLeads() {
     const hrs  = hrsBadgeHtml(l.working_hours);
     const wa   = l.last_wa ? `<span class="last-wa-tag">📱 ${relTime(l.last_wa)}</span>` : '';
     const due  = (l.follow_up_date && l.status !== 'closed') ? dueBadge(l.follow_up_date) : '';
+    const phoneOk = !!encPhone(l.phone);
     return `<div class="lcard" onclick="openDetail(${l.id})" style="border-left-color:${borderColor}">
+      <div class="lcard-quick">
+        ${phoneOk ? `<button class="qb-wa"   title="WhatsApp" onclick="quickWa(${l.id}, event)">💬</button>` : ''}
+        ${phoneOk ? `<button class="qb-call" title="Call"     onclick="quickCall(${l.id}, event)">📞</button>` : ''}
+      </div>
       <div class="lcard-top">
         <div class="lcard-name">${esc(l.name)}</div>
         <div class="lcard-score score-${tier}">${sc}</div>
@@ -780,6 +912,12 @@ function toast(msg, type = 'info') {
 // ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
+  // Poll the laptop-online banner every 30s
+  setInterval(checkLaptopOnline, 30_000);
+  // Auto-refresh leads every 60s so phone stays in sync without user tapping Refresh
+  setInterval(() => { if (!document.hidden) loadData(); }, 60_000);
+  // Refresh on tab focus (user comes back to companion after using WA)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadData(); } });
 
   // Allow swiping down on sheet to close
   let startY = 0;
