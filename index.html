@@ -376,6 +376,7 @@ const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.v, s]));
 // ── State ────────────────────────────────────────────────────────
 let allLeads    = [];   // array, sorted by date_added desc
 let fbTemplates = {};   // from Firebase /templates
+let fbSettings  = {};   // from Firebase /settings (flows, wa_custom_msgs, …)
 let pendingChanges = 0;
 let currentFilter  = 'all';
 let searchQuery    = '';
@@ -593,12 +594,21 @@ async function loadData() {
   setLoading(true);
   setDiag('Loading from cloud…');
   try {
-    const [leadsObj, tpls] = await Promise.all([
+    const [leadsObj, tpls, settings] = await Promise.all([
       fbGet('leads'),
-      fbGet('templates')
+      fbGet('templates'),
+      fbGet('settings').catch(() => null)
     ]);
 
     fbTemplates = tpls || {};
+    fbSettings  = settings || {};
+    // Templates can also live inside /settings/wa_custom_msgs (synced from full app).
+    // Merge so cloud edits from either source are available.
+    if (fbSettings.wa_custom_msgs && typeof fbSettings.wa_custom_msgs === 'object') {
+      Object.keys(fbSettings.wa_custom_msgs).forEach(k => {
+        if (!fbTemplates[k]) fbTemplates[k] = fbSettings.wa_custom_msgs[k];
+      });
+    }
 
     if (!leadsObj) {
       allLeads = [];
@@ -827,6 +837,14 @@ function openDetail(id) {
 
     <div class="div"></div>
 
+    <!-- Conversation Flow -->
+    <div class="sheet-section">
+      <div class="sheet-label">Conversation Flow</div>
+      <div id="flowSection"></div>
+    </div>
+
+    <div class="div"></div>
+
     <!-- WA Templates -->
     <div class="sheet-section">
       <div class="sheet-label">WhatsApp Templates</div>
@@ -839,6 +857,7 @@ function openDetail(id) {
   `;
 
   renderTplCards(l);
+  renderFlowSection(l);
   document.getElementById('backdrop').classList.add('on');
   document.getElementById('sheet').classList.add('on');
 }
@@ -893,6 +912,112 @@ function sendTpl(key) {
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   // Log activity via queueActivity so it reaches /phone_changes properly and gets committed by the auto-pull
   queueActivity(currentLead.id, 'whatsapp', 'Sent ' + key + ' from detail sheet');
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🌳 CONVERSATION FLOWS — companion side (mirrors index.html engine)
+// ════════════════════════════════════════════════════════════════════════
+const REPLY_KEYWORDS = {
+  positive: ['yes','yeah','yep','sure','ok','okay','interested','keen','we do','i do','sounds good','tell me more','please do','definitely','absolutely','of course','sounds great','ya','boleh','nak','minat','setuju'],
+  negative: ['no','nope','not really','not interested','not now','dont need',"don't need",'no thanks','no thank you','pass','later','already have','tak','tidak','tak nak','tak minat','sudah ada'],
+  question: ['?','what','how','why','who','when','where','which','can you','could you','explain','more info','price','cost','how much','apa','macam mana','berapa']
+};
+function classifyReply(text) {
+  if (!text || !text.trim()) return 'noreply';
+  const t = String(text).toLowerCase();
+  if (t.includes('?')) return 'question';
+  for (const kw of REPLY_KEYWORDS.negative) if (t.includes(kw)) return 'negative';
+  for (const kw of REPLY_KEYWORDS.positive) if (t.includes(kw)) return 'positive';
+  for (const kw of REPLY_KEYWORDS.question) if (t.includes(kw)) return 'question';
+  return 'positive';
+}
+function getActiveFlow() {
+  const flows = (fbSettings && fbSettings.conversation_flows) || {};
+  const id = (fbSettings && fbSettings.active_flow_id) || 'missed_calls';
+  return flows[id] || flows[Object.keys(flows)[0]] || null;
+}
+function fillFlowMsg(step, lead) {
+  if (!step || !step.message) return '';
+  const type = formatBizType(lead && lead.category);
+  return step.message
+    .replace(/\{name\}/g, (lead && lead.name) || '')
+    .replace(/\{type\}/g, type || 'business')
+    .replace(/\{area\}/g, (lead && lead.area) || '');
+}
+function getNextStep(currentStepId, replyText) {
+  const f = getActiveFlow();
+  if (!f) return null;
+  const cur = f.steps[currentStepId] || f.steps[f.rootStepId];
+  if (!cur) return null;
+  const cat = classifyReply(replyText);
+  const nxt = (cur.branches && (cur.branches[cat] || cur.branches.next)) || null;
+  return nxt ? f.steps[nxt] : null;
+}
+function renderFlowSection(lead) {
+  const cont = document.getElementById('flowSection');
+  if (!cont) return;
+  const f = getActiveFlow();
+  if (!f) {
+    cont.innerHTML = '<div style="color:var(--t3);font-size:11px;padding:8px">No flow configured. Open the laptop app → Flows tab to create one.</div>';
+    return;
+  }
+  const curId = lead.flow_step || f.rootStepId;
+  const cur = f.steps[curId] || f.steps[f.rootStepId];
+  if (!cur) { cont.innerHTML = ''; return; }
+  const msg = fillFlowMsg(cur, lead);
+  const preview = msg.length > 180 ? msg.slice(0, 180) + '…' : msg;
+  // Branch buttons → mark a reply class and advance to the next step
+  const branchBtns = ['positive','negative','question','noreply'].map(cat => {
+    const tgt = cur.branches && cur.branches[cat];
+    const colors = { positive:'#22c55e', negative:'#ef4444', question:'#f59e0b', noreply:'#64748b' };
+    const labels = { positive:'✓ Yes',  negative:'✗ No',     question:'? Q',     noreply:'⏱ None' };
+    const dis = tgt ? '' : 'opacity:.35;pointer-events:none';
+    return `<button onclick="advanceFlow('${cat}')" style="padding:8px 10px;background:rgba(0,0,0,.25);border:1px solid ${colors[cat]};border-radius:8px;color:${colors[cat]};font-size:11px;font-weight:700;cursor:pointer;flex:1;min-height:38px;${dis}">${labels[cat]}</button>`;
+  }).join('');
+  cont.innerHTML = `
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;margin-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
+        <div style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">${esc(f.name||'Flow')} · ${esc(cur.label||'Step')}</div>
+        <div style="font-size:10px;color:var(--t3)">${(cur.delayHours||0)}h delay</div>
+      </div>
+      <div style="font-size:12px;color:var(--t1);line-height:1.5;white-space:pre-wrap;background:rgba(0,0,0,.25);padding:8px;border-radius:6px;max-height:160px;overflow:auto">${esc(preview)}</div>
+      <button onclick="sendFlowStep()" style="width:100%;margin-top:6px;padding:10px;background:#25d366;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;min-height:44px">📤 Send this step via WhatsApp</button>
+      <div style="font-size:10px;color:var(--t3);margin-top:8px;margin-bottom:4px">After they reply, mark how they responded:</div>
+      <div style="display:flex;gap:5px">${branchBtns}</div>
+    </div>`;
+}
+function sendFlowStep() {
+  if (!currentLead) return;
+  const f = getActiveFlow();
+  if (!f) { toast('No flow', 'error'); return; }
+  const cur = f.steps[currentLead.flow_step || f.rootStepId];
+  if (!cur) return;
+  const phone = encPhone(currentLead.phone);
+  if (!phone) { toast('No phone number', 'error'); return; }
+  const msg = fillFlowMsg(cur, currentLead);
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  queueActivity(currentLead.id, 'whatsapp', `Flow step: ${cur.label || cur.id}`);
+  toast('Sent · mark their reply when it comes back', 'success');
+}
+async function advanceFlow(cat) {
+  if (!currentLead) return;
+  const f = getActiveFlow();
+  if (!f) return;
+  const curId = currentLead.flow_step || f.rootStepId;
+  const cur = f.steps[curId];
+  if (!cur) return;
+  const nextId = (cur.branches && (cur.branches[cat] || cur.branches.next)) || null;
+  if (!nextId) { toast('Flow ended at this branch', 'info'); return; }
+  // Persist the new flow_step on the lead
+  try {
+    await queueChange(currentLead.id, { flow_step: nextId, last_reply_class: cat }, true);
+    currentLead.flow_step = nextId;
+    currentLead.last_reply_class = cat;
+    renderFlowSection(currentLead);
+    toast('Advanced to: ' + (f.steps[nextId].label || nextId), 'success');
+  } catch (e) {
+    toast('Failed to advance: ' + e.message, 'error');
+  }
 }
 
 // ── Save changes ─────────────────────────────────────────────────
