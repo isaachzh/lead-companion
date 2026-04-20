@@ -255,6 +255,7 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:-apple-sy
   <div id="hdr">
     <div class="hdr-row">
       <div class="hdr-logo">📱 <span>LEAD</span> CRM</div>
+      <span id="offlineBadge" style="display:none;background:rgba(251,191,36,.15);color:#fbbf24;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid rgba(251,191,36,.3);margin-right:auto;margin-left:8px"></span>
       <div class="hdr-sync" id="syncBtn" onclick="syncNow()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         <span id="syncLabel">Refresh</span>
@@ -312,40 +313,52 @@ const FIREBASE_DB_URL = 'https://leadbot-523cb-default-rtdb.asia-southeast1.fire
 // ── Default WA templates (kept in sync with server/app.js) ──────
 const DEFAULT_MSGS = {
   'en-intro':
-`Hi! I came across {name} on Google Maps and noticed you don't have a website yet.
+`Hi! I came across {name} on Google Maps — looking for a {type} in the area.
 
-I help Malaysian businesses like yours build professional websites that attract customers 24/7 — even while you sleep.
+I help Malaysian businesses get more customers through 3 services:
 
-Our package starts from RM2,799 (one-time setup) + RM349/month. This includes hosting, mobile-friendly design, WhatsApp button, and Google-ready setup.
+🌐 Professional Website — RM2,799 setup + RM349/mo
+🤖 AI Receptionist (24/7 WhatsApp + web chat) — RM4,500 setup + RM599/mo
+⭐ Google Review Bot (auto-replies + review requests) — RM1,500 setup + RM249/mo
 
-Many of our clients see new enquiries within the first month. Would you be open to a quick 5-minute chat? 😊`,
+💎 All 3 bundle: RM7,999 setup + RM999/mo (save RM800 + RM198/mo)
+
+Most clients see new enquiries within the first month. Open to a quick 5-minute chat? 😊`,
 
   'en-followup':
-`Hi again! Just following up on my earlier message about getting a website for {name}.
+`Hi again! Just following up on my earlier message for {name}.
 
-I know things get busy — I just wanted to check if you had a chance to consider it.
+Quick recap of what I offer:
+🌐 Website — RM2,799 + RM349/mo
+🤖 AI Receptionist — RM4,500 + RM599/mo
+⭐ Review Bot — RM1,500 + RM249/mo
+💎 Bundle of all 3 — RM7,999 + RM999/mo
 
-A website helps customers find you on Google before they find your competitors. Our setup is hassle-free and we handle everything for you.
-
-RM2,799 setup + RM349/month. Happy to answer any questions — no pressure at all 🙏`,
+Happy to send a free demo of any one — no pressure at all 🙏`,
 
   'bm-intro':
-`Hai! Saya jumpa {name} di Google Maps dan perasan perniagaan anda belum ada laman web lagi.
+`Hai! Saya jumpa {name} di Google Maps — sedang cari {type} di kawasan ini.
 
-Saya bantu perniagaan Malaysia bina laman web profesional yang tarik pelanggan 24/7 — walaupun semasa anda tidur.
+Saya bantu perniagaan Malaysia dapat lebih ramai pelanggan dengan 3 perkhidmatan:
 
-Pakej kami bermula dari RM2,799 (bayaran sekali) + RM349/bulan. Termasuk hosting, rekaan mesra-mobil, butang WhatsApp, dan persediaan Google.
+🌐 Laman Web Profesional — RM2,799 + RM349/bulan
+🤖 AI Receptionist (chat WhatsApp + web 24/7) — RM4,500 + RM599/bulan
+⭐ Google Review Bot (auto-reply + minta review) — RM1,500 + RM249/bulan
 
-Ramai pelanggan kami dapat pertanyaan baharu dalam bulan pertama. Boleh kita bersembang sekejap 5 minit? 😊`,
+💎 Pakej semua 3: RM7,999 + RM999/bulan (jimat RM800 + RM198/bulan)
+
+Ramai pelanggan dapat enquiry baharu dalam bulan pertama. Boleh sembang 5 minit? 😊`,
 
   'bm-followup':
-`Hai semula! Sekadar ingin follow up mesej saya sebelum ini berkenaan laman web untuk {name}.
+`Hai semula! Sekadar follow up mesej saya untuk {name}.
 
-Saya faham kesibukan harian — cuma ingin tanya sama ada anda sempat pertimbangkannya.
+Ringkasan tawaran:
+🌐 Laman Web — RM2,799 + RM349/bulan
+🤖 AI Receptionist — RM4,500 + RM599/bulan
+⭐ Review Bot — RM1,500 + RM249/bulan
+💎 Pakej 3-dalam-1 — RM7,999 + RM999/bulan
 
-Laman web membantu pelanggan jumpa anda di Google sebelum mereka pergi ke tempat lain. Kami uruskan semua — anda tak perlu buat apa-apa.
-
-RM2,799 persediaan + RM349/bulan. Saya sedia jawab sebarang soalan — tiada tekanan 🙏`
+Saya boleh hantar demo percuma untuk mana-mana satu — tiada tekanan 🙏`
 };
 
 // ── Status config ────────────────────────────────────────────────
@@ -383,12 +396,66 @@ async function fbGet(subpath) {
 }
 
 async function fbPut(subpath, data) {
-  await fetch(`${FIREBASE_DB_URL}/${subpath}.json`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
+  try {
+    const r = await fetch(`${FIREBASE_DB_URL}/${subpath}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (err) {
+    // Offline / network error — queue for retry
+    console.warn('[fbPut] failed, queueing:', err.message);
+    enqueueOffline({ subpath, data });
+    throw err;
+  }
 }
+
+// ── Offline queue: stores failed writes in localStorage, retries on reconnect ──
+function enqueueOffline(item) {
+  try {
+    const q = JSON.parse(localStorage.getItem('lb_pendingQueue') || '[]');
+    q.push({ ...item, ts: Date.now() });
+    // Cap queue at 100 entries to prevent unbounded growth
+    if (q.length > 100) q.splice(0, q.length - 100);
+    localStorage.setItem('lb_pendingQueue', JSON.stringify(q));
+    updateOfflineBadge(q.length);
+  } catch(e) {}
+}
+function updateOfflineBadge(n) {
+  const badge = document.getElementById('offlineBadge');
+  if (!badge) return;
+  if (n > 0) { badge.style.display = 'inline-block'; badge.textContent = '⚠ ' + n + ' queued'; }
+  else { badge.style.display = 'none'; }
+}
+async function flushOfflineQueue() {
+  let q;
+  try { q = JSON.parse(localStorage.getItem('lb_pendingQueue') || '[]'); } catch(e) { return; }
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      const r = await fetch(`${FIREBASE_DB_URL}/${item.subpath}.json`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.data)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    } catch (e) { remaining.push(item); }
+  }
+  localStorage.setItem('lb_pendingQueue', JSON.stringify(remaining));
+  updateOfflineBadge(remaining.length);
+  if (q.length > remaining.length) console.log('[offline-queue] flushed ' + (q.length - remaining.length));
+}
+// Try to flush on load + every 30s + on visibility change
+window.addEventListener('online', flushOfflineQueue);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) flushOfflineQueue(); });
+setInterval(flushOfflineQueue, 30_000);
+window.addEventListener('load', () => {
+  try {
+    const q = JSON.parse(localStorage.getItem('lb_pendingQueue') || '[]');
+    updateOfflineBadge(q.length);
+  } catch(e) {}
+  flushOfflineQueue();
+});
 
 // ── Template helpers ─────────────────────────────────────────────
 function getTpl(key) {
